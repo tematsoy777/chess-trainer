@@ -43,7 +43,7 @@ h2{font-size:18px;margin:0 0 8px}
 .item .done{color:var(--ok);font-size:20px}
 /* board */
 .board-wrap{position:relative;margin:0 auto 10px;width:100%;max-width:min(100%,62vh)}
-.board{display:grid;grid-template-columns:repeat(8,1fr);aspect-ratio:1;border-radius:8px;overflow:hidden;container-type:inline-size;touch-action:manipulation;user-select:none;-webkit-user-select:none}
+.board{display:grid;grid-template-columns:repeat(8,minmax(0,1fr));grid-template-rows:repeat(8,minmax(0,1fr));aspect-ratio:1;border-radius:8px;overflow:hidden;container-type:inline-size;touch-action:manipulation;user-select:none;-webkit-user-select:none}
 .sq{position:relative;display:flex;align-items:center;justify-content:center}
 .sq.l{background:var(--light)}.sq.d{background:var(--dark)}
 .sq.last.l{background:#f6f669}.sq.last.d{background:#baca2b}
@@ -53,9 +53,7 @@ h2{font-size:18px;margin:0 0 8px}
 .sq.target{box-shadow:inset 0 0 0 4px #f5a623}
 .dot::after{content:"";width:28%;height:28%;border-radius:50%;background:rgba(0,0,0,.22);position:absolute}
 .ring::after{content:"";position:absolute;inset:4%;border-radius:50%;border:5px solid rgba(0,0,0,.22)}
-.pc{font-size:10.5cqw;line-height:1;font-family:"Apple Symbols","Segoe UI Symbol","DejaVu Sans",serif;position:relative;z-index:1;pointer-events:none}
-.pc.w{color:#fff;text-shadow:0 0 1px #000,0 0 1px #000,0 0 1px #000,0 1px 1px #000}
-.pc.b{color:#1b1b1b;text-shadow:0 0 1px #fff3}
+.pc{width:90%;height:90%;position:relative;z-index:1;pointer-events:none;-webkit-user-drag:none}
 .coord{position:absolute;font-size:2.4cqw;font-weight:700;pointer-events:none}
 .coord.f{right:3%;bottom:1%}.coord.r{left:3%;top:2%}
 .sq.l .coord{color:var(--dark)}.sq.d .coord{color:var(--light)}
@@ -118,7 +116,9 @@ const store = {
 };
 
 /* ---------- board component ---------- */
-const GLYPH = { k:'♚', q:'♛', r:'♜', b:'♝', n:'♞', p:'♟' };
+// Фигуры Chessnut — Alexis Luengas, Apache 2.0 (pieces/chessnut/LICENSE)
+const pieceSrc = p => `pieces/chessnut/${p.color}${p.type.toUpperCase()}.svg`;
+['w','b'].forEach(color => 'kqrbnp'.split('').forEach(type => { new Image().src = pieceSrc({ color, type }); }));
 const FILES = 'abcdefgh';
 function Board(el, game, opts){
   this.el = el; this.game = game; this.opts = opts || {};
@@ -146,7 +146,7 @@ Board.prototype.render = function(){
     if (this.marks[s]) cls.push(this.marks[s]);
     if (targets[s]) cls.push(p ? 'ring' : 'dot');
     html += `<div class="${cls.join(' ')}" data-sq="${s}">`;
-    if (p) html += `<span class="pc ${p.color}">${GLYPH[p.type]}︎</span>`;
+    if (p) html += `<img class="pc" src="${pieceSrc(p)}" alt="" draggable="false">`;
     if (r===7) html += `<span class="coord f">${FILES[file]}</span>`;
     if (f===0) html += `<span class="coord r">${rank}</span>`;
     html += '</div>';
