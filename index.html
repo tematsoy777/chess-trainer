@@ -1,0 +1,517 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>Шахматный тренер</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
+<style>
+:root{
+  --bg:var(--tg-theme-bg-color,#ffffff);
+  --bg2:var(--tg-theme-secondary-bg-color,#f1f2f6);
+  --text:var(--tg-theme-text-color,#111);
+  --hint:var(--tg-theme-hint-color,#8a8f98);
+  --accent:var(--tg-theme-button-color,#2f80ed);
+  --accent-text:var(--tg-theme-button-text-color,#fff);
+  --card:var(--tg-theme-section-bg-color,var(--bg));
+  --ok:#22a559;--bad:#e5484d;
+  --light:#eeeed2;--dark:#769656;
+  --safe-b:max(env(safe-area-inset-bottom),var(--tg-content-safe-area-inset-bottom,0px));
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;background:var(--bg2);color:var(--text);font:16px/1.4 -apple-system,BlinkMacSystemFont,"SF Pro Text",system-ui,sans-serif;overscroll-behavior:none}
+body{min-height:100vh}
+.app{max-width:520px;margin:0 auto;padding:12px 16px calc(84px + var(--safe-b))}
+h1{font-size:22px;margin:4px 0 12px}
+h2{font-size:18px;margin:0 0 8px}
+.muted{color:var(--hint);font-size:14px}
+.card{background:var(--card);border-radius:14px;padding:14px;margin-bottom:12px}
+.stats{display:flex;gap:8px;margin-bottom:12px}
+.stat{flex:1;background:var(--card);border-radius:12px;padding:10px;text-align:center}
+.stat b{display:block;font-size:20px}
+.stat span{font-size:12px;color:var(--hint)}
+.btn{appearance:none;border:0;border-radius:12px;padding:12px 14px;font:600 15px/1 inherit;font-family:inherit;background:var(--accent);color:var(--accent-text);cursor:pointer}
+.btn.sec{background:var(--card);color:var(--accent)}
+.btn:disabled{opacity:.45}
+.row{display:flex;gap:8px;flex-wrap:wrap}
+.row .btn{flex:1}
+.list .item{display:flex;align-items:center;gap:12px;background:var(--card);border-radius:14px;padding:12px 14px;margin-bottom:8px;cursor:pointer}
+.item .ico{font-size:26px;width:36px;text-align:center}
+.item .t{flex:1}
+.item .t b{display:block}
+.item .done{color:var(--ok);font-size:20px}
+/* board */
+.board-wrap{position:relative;margin:0 auto 10px;width:100%;max-width:min(100%,62vh)}
+.board{display:grid;grid-template-columns:repeat(8,1fr);aspect-ratio:1;border-radius:8px;overflow:hidden;container-type:inline-size;touch-action:manipulation;user-select:none;-webkit-user-select:none}
+.sq{position:relative;display:flex;align-items:center;justify-content:center}
+.sq.l{background:var(--light)}.sq.d{background:var(--dark)}
+.sq.last.l{background:#f6f669}.sq.last.d{background:#baca2b}
+.sq.sel{box-shadow:inset 0 0 0 4px rgba(20,85,30,.75)}
+.sq.check{background:radial-gradient(circle,#ff3b30 0,#e5484d 35%,rgba(229,72,77,0) 75%) !important}
+.sq.hint{box-shadow:inset 0 0 0 4px #2f80ed}
+.sq.target{box-shadow:inset 0 0 0 4px #f5a623}
+.dot::after{content:"";width:28%;height:28%;border-radius:50%;background:rgba(0,0,0,.22);position:absolute}
+.ring::after{content:"";position:absolute;inset:4%;border-radius:50%;border:5px solid rgba(0,0,0,.22)}
+.pc{font-size:10.5cqw;line-height:1;font-family:"Apple Symbols","Segoe UI Symbol","DejaVu Sans",serif;position:relative;z-index:1;pointer-events:none}
+.pc.w{color:#fff;text-shadow:0 0 1px #000,0 0 1px #000,0 0 1px #000,0 1px 1px #000}
+.pc.b{color:#1b1b1b;text-shadow:0 0 1px #fff3}
+.coord{position:absolute;font-size:2.4cqw;font-weight:700;pointer-events:none}
+.coord.f{right:3%;bottom:1%}.coord.r{left:3%;top:2%}
+.sq.l .coord{color:var(--dark)}.sq.d .coord{color:var(--light)}
+.feedback{min-height:24px;font-weight:600;text-align:center;margin:6px 0 10px}
+.feedback.ok{color:var(--ok)}.feedback.bad{color:var(--bad)}
+.task{font-size:15px;margin-bottom:10px}
+.chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
+.chip{min-width:34px;height:34px;border-radius:10px;border:0;background:var(--bg2);color:var(--text);font:600 14px inherit;font-family:inherit}
+.chip.solved{background:var(--ok);color:#fff}
+.chip.cur{outline:2px solid var(--accent)}
+.seg{display:flex;background:var(--bg2);border-radius:10px;padding:3px;gap:3px;margin-bottom:8px}
+.seg button{flex:1;border:0;background:transparent;color:var(--text);padding:8px 4px;border-radius:8px;font:600 13px inherit;font-family:inherit}
+.seg button.on{background:var(--card);box-shadow:0 1px 3px rgba(0,0,0,.12)}
+.progress{height:6px;background:var(--bg2);border-radius:3px;overflow:hidden;margin:6px 0 12px}
+.progress i{display:block;height:100%;background:var(--accent);transition:width .3s}
+.tabs{position:fixed;left:0;right:0;bottom:0;background:var(--card);display:flex;justify-content:center;border-top:1px solid rgba(127,127,127,.18);padding-bottom:var(--safe-b);z-index:5}
+.tabs button{flex:1;max-width:173px;border:0;background:none;color:var(--hint);padding:8px 0 10px;font:500 11px inherit;font-family:inherit}
+.tabs button span{display:block;font-size:22px;margin-bottom:2px}
+.tabs button.on{color:var(--accent)}
+.hidden{display:none !important}
+.thinking{opacity:.6}
+.moves{font-size:13px;color:var(--hint);max-height:60px;overflow:auto;margin-top:8px;word-spacing:2px}
+</style>
+</head>
+<body>
+<div class="app" id="app"></div>
+<nav class="tabs" id="tabs">
+  <button data-tab="learn" class="on"><span>📘</span>Обучение</button>
+  <button data-tab="puzzles"><span>🧩</span>Задачи</button>
+  <button data-tab="play"><span>♟︎</span>Игра</button>
+</nav>
+<script>
+const tg = window.Telegram && Telegram.WebApp;
+if (tg) {
+  tg.ready(); tg.expand();
+  try { tg.disableVerticalSwipes && tg.disableVerticalSwipes(); } catch(e) {}
+}
+const haptic = {
+  tap(){ try{ tg.HapticFeedback.impactOccurred('light') }catch(e){} },
+  ok(){ try{ tg.HapticFeedback.notificationOccurred('success') }catch(e){} },
+  bad(){ try{ tg.HapticFeedback.notificationOccurred('error') }catch(e){} },
+};
+
+/* ---------- storage (localStorage + Telegram CloudStorage) ---------- */
+const store = {
+  data: { lessons:{}, solved:{}, rating:1000, streak:0, best:0, wins:0, games:0 },
+  load(cb){
+    try { Object.assign(this.data, JSON.parse(localStorage.getItem('chess') || '{}')); } catch(e) {}
+    const cs = tg && tg.CloudStorage;
+    if (cs && tg.initData) {
+      try { cs.getItem('chess', (err, v) => { if (!err && v) { try { Object.assign(this.data, JSON.parse(v)); } catch(e) {} } cb(); }); return; } catch(e) {}
+    }
+    cb();
+  },
+  save(){
+    const s = JSON.stringify(this.data);
+    try { localStorage.setItem('chess', s); } catch(e) {}
+    try { if (tg && tg.initData) tg.CloudStorage.setItem('chess', s); } catch(e) {}
+  }
+};
+
+/* ---------- board component ---------- */
+const GLYPH = { k:'♚', q:'♛', r:'♜', b:'♝', n:'♞', p:'♟' };
+const FILES = 'abcdefgh';
+function Board(el, game, opts){
+  this.el = el; this.game = game; this.opts = opts || {};
+  this.flip = false; this.sel = null; this.last = null; this.marks = {}; this.locked = false;
+  el.addEventListener('click', e => {
+    const sq = e.target.closest('.sq'); if (!sq || this.locked) return;
+    this.tap(sq.dataset.sq);
+  });
+}
+Board.prototype.render = function(){
+  const g = this.game, legal = this.sel ? g.moves({ square:this.sel, verbose:true }) : [];
+  const targets = {}; legal.forEach(m => targets[m.to] = m);
+  let checkSq = null;
+  if (g.in_check()) {
+    for (let i=0;i<64;i++){ const s=FILES[i%8]+(8-(i>>3)); const p=g.get(s); if (p && p.type==='k' && p.color===g.turn()) checkSq=s; }
+  }
+  let html = '';
+  for (let r=0;r<8;r++) for (let f=0;f<8;f++){
+    const rank = this.flip ? r+1 : 8-r, file = this.flip ? 7-f : f;
+    const s = FILES[file] + rank, p = g.get(s);
+    const cls = ['sq', (file+rank)%2 ? 'd' : 'l'];
+    if (this.last && (this.last.from===s || this.last.to===s)) cls.push('last');
+    if (this.sel===s) cls.push('sel');
+    if (checkSq===s) cls.push('check');
+    if (this.marks[s]) cls.push(this.marks[s]);
+    if (targets[s]) cls.push(p ? 'ring' : 'dot');
+    html += `<div class="${cls.join(' ')}" data-sq="${s}">`;
+    if (p) html += `<span class="pc ${p.color}">${GLYPH[p.type]}︎</span>`;
+    if (r===7) html += `<span class="coord f">${FILES[file]}</span>`;
+    if (f===0) html += `<span class="coord r">${rank}</span>`;
+    html += '</div>';
+  }
+  this.el.innerHTML = html;
+};
+Board.prototype.tap = function(s){
+  const g = this.game, p = g.get(s);
+  const canMove = this.opts.canMove ? this.opts.canMove() : true;
+  if (!canMove) return;
+  if (this.sel) {
+    const m = g.moves({ square:this.sel, verbose:true }).find(m => m.to===s);
+    if (m) {
+      const mv = g.move({ from:m.from, to:m.to, promotion:'q' });
+      this.sel = null; this.last = mv; haptic.tap(); this.render();
+      this.opts.onMove && this.opts.onMove(mv);
+      return;
+    }
+  }
+  if (p && p.color===g.turn() && this.sel!==s) { this.sel = s; haptic.tap(); }
+  else this.sel = null;
+  this.render();
+};
+Board.prototype.play = function(mv){ const m = this.game.move(mv); this.last = m; this.render(); return m; };
+
+/* ---------- mate solver (for puzzles) ---------- */
+function mateIn(g, n){ // returns first move (verbose) that forces mate in n for side to move
+  for (const m of g.moves({ verbose:true })) {
+    g.move(m);
+    let ok = false;
+    if (g.in_checkmate()) ok = true;
+    else if (n>1 && !g.game_over()) ok = allRepliesLose(g, n-1);
+    g.undo();
+    if (ok) return m;
+  }
+  return null;
+}
+function allRepliesLose(g, n){
+  for (const r of g.moves({ verbose:true })) { g.move(r); const s = mateIn(g, n); g.undo(); if (!s) return false; }
+  return true;
+}
+
+/* ---------- engine (play mode) ---------- */
+const VAL = { p:100, n:320, b:330, r:500, q:900, k:0 };
+const PST = {
+  p:[0,0,0,0,0,0,0,0,50,50,50,50,50,50,50,50,10,10,20,30,30,20,10,10,5,5,10,25,25,10,5,5,0,0,0,20,20,0,0,0,5,-5,-10,0,0,-10,-5,5,5,10,10,-20,-20,10,10,5,0,0,0,0,0,0,0,0],
+  n:[-50,-40,-30,-30,-30,-30,-40,-50,-40,-20,0,0,0,0,-20,-40,-30,0,10,15,15,10,0,-30,-30,5,15,20,20,15,5,-30,-30,0,15,20,20,15,0,-30,-30,5,10,15,15,10,5,-30,-40,-20,0,5,5,0,-20,-40,-50,-40,-30,-30,-30,-30,-40,-50],
+  b:[-20,-10,-10,-10,-10,-10,-10,-20,-10,0,0,0,0,0,0,-10,-10,0,5,10,10,5,0,-10,-10,5,5,10,10,5,5,-10,-10,0,10,10,10,10,0,-10,-10,10,10,10,10,10,10,-10,-10,5,0,0,0,0,5,-10,-20,-10,-10,-10,-10,-10,-10,-20],
+  r:[0,0,0,0,0,0,0,0,5,10,10,10,10,10,10,5,-5,0,0,0,0,0,0,-5,-5,0,0,0,0,0,0,-5,-5,0,0,0,0,0,0,-5,-5,0,0,0,0,0,0,-5,-5,0,0,0,0,0,0,-5,0,0,0,5,5,0,0,0],
+  q:[-20,-10,-10,-5,-5,-10,-10,-20,-10,0,0,0,0,0,0,-10,-10,0,5,5,5,5,0,-10,-5,0,5,5,5,5,0,-5,0,0,5,5,5,5,0,-5,-10,5,5,5,5,5,0,-10,-10,0,5,0,0,0,0,-10,-20,-10,-10,-5,-5,-10,-10,-20],
+  k:[-30,-40,-40,-50,-50,-40,-40,-30,-30,-40,-40,-50,-50,-40,-40,-30,-30,-40,-40,-50,-50,-40,-40,-30,-30,-40,-40,-50,-50,-40,-40,-30,-20,-30,-30,-40,-40,-30,-30,-20,-10,-20,-20,-20,-20,-20,-20,-10,20,20,0,0,0,0,20,20,20,30,10,0,0,10,30,20]
+};
+function evaluate(g){ // from white's view
+  const b = g.board(); let s = 0;
+  for (let r=0;r<8;r++) for (let f=0;f<8;f++){ const p=b[r][f]; if(!p) continue;
+    const idx = p.color==='w' ? r*8+f : (7-r)*8+f;
+    const v = VAL[p.type] + PST[p.type][idx];
+    s += p.color==='w' ? v : -v; }
+  return s;
+}
+function orderMoves(ms){ return ms.sort((a,b)=> (b.captured?VAL[b.captured]*10-VAL[b.piece]:0) - (a.captured?VAL[a.captured]*10-VAL[a.piece]:0) + ((b.promotion?800:0)-(a.promotion?800:0))); }
+function negamax(g, depth, alpha, beta, color){
+  if (g.in_checkmate()) return -100000 - depth;
+  if (g.in_draw() || g.in_stalemate() || g.in_threefold_repetition()) return 0;
+  if (depth===0) return color*evaluate(g);
+  let best = -Infinity;
+  for (const m of orderMoves(g.moves({ verbose:true }))) {
+    g.move(m); const v = -negamax(g, depth-1, -beta, -alpha, -color); g.undo();
+    if (v>best) best=v; if (v>alpha) alpha=v; if (alpha>=beta) break;
+  }
+  return best;
+}
+function bestMove(g, depth, noise){
+  const color = g.turn()==='w' ? 1 : -1;
+  let best = null, bestV = -Infinity;
+  const ms = orderMoves(g.moves({ verbose:true }));
+  for (const m of ms) {
+    g.move(m); let v = -negamax(g, depth-1, -Infinity, -bestV, -color); g.undo();
+    v += (Math.random()-0.5)*noise;
+    if (v>bestV) { bestV=v; best=m; }
+  }
+  return best;
+}
+
+/* ---------- content ---------- */
+const LESSONS = [
+  { id:'board', ico:'♔', title:'Доска и цель игры', sub:'С чего всё начинается', steps:[
+    { text:'Шахматная доска — 8×8 клеток. Вертикали обозначены буквами a–h, горизонтали — цифрами 1–8. У каждой клетки есть имя, например e4.<br><br>Белые всегда ходят первыми. <b>Цель игры — поставить мат королю соперника</b>: атаковать его так, чтобы он не смог спастись.', fen:'start', goal:{type:'info'} },
+    { text:'Попробуй: нажми на пешку e2, затем на клетку e4.', fen:'start', goal:{type:'move', from:'e2', to:'e4'} },
+  ]},
+  { id:'rook', ico:'♜', title:'Ладья', sub:'Ходит по прямым', steps:[
+    { text:'Ладья ходит на любое число клеток по вертикали или горизонтали, но не перепрыгивает фигуры. Съешь пешку на a7.', fen:'7k/p7/8/8/8/8/8/R6K w - - 0 1', goal:{type:'move', to:'a7'} },
+    { text:'И по горизонтали тоже. Съешь пешку на h5.', fen:'7k/8/8/R6p/8/8/8/K7 w - - 0 1', goal:{type:'move', to:'h5'} },
+  ]},
+  { id:'bishop', ico:'♝', title:'Слон', sub:'Ходит по диагоналям', steps:[
+    { text:'Слон ходит по диагонали на любое число клеток и всегда остаётся на клетках одного цвета. Съешь пешку на f6.', fen:'7k/8/5p2/8/8/8/8/B6K w - - 0 1', goal:{type:'move', to:'f6'} },
+  ]},
+  { id:'queen', ico:'♛', title:'Ферзь', sub:'Самая сильная фигура', steps:[
+    { text:'Ферзь ходит и как ладья, и как слон — по прямым и диагоналям. Съешь пешку на e5.', fen:'1k6/8/8/4p3/8/8/8/Q6K w - - 0 1', goal:{type:'move', to:'e5'} },
+  ]},
+  { id:'knight', ico:'♞', title:'Конь', sub:'Ходит буквой «Г»', steps:[
+    { text:'Конь ходит буквой «Г»: две клетки прямо и одна в сторону. Это единственная фигура, которая <b>перепрыгивает</b> через другие. Съешь конём пешку на f3.', fen:'7k/8/8/8/8/5p2/5PPP/6NK w - - 0 1', goal:{type:'move', to:'f3', piece:'n'} },
+  ]},
+  { id:'pawn', ico:'♟', title:'Пешка', sub:'Ходы, взятие, превращение', steps:[
+    { text:'Пешка ходит только вперёд на 1 клетку, а с начальной позиции — можно на 2. Бьёт она <b>по диагонали</b> вперёд. Съешь пешку на d5.', fen:'7k/8/8/3p4/4P3/8/8/7K w - - 0 1', goal:{type:'move', to:'d5'} },
+    { text:'Дойдя до последней горизонтали, пешка превращается в любую фигуру (обычно в ферзя). Проведи пешку на a8.', fen:'7k/P7/8/8/8/8/8/7K w - - 0 1', goal:{type:'move', to:'a8'} },
+  ]},
+  { id:'king', ico:'♚', title:'Король и шах', sub:'Главная фигура', steps:[
+    { text:'Король ходит на 1 клетку в любую сторону. Нельзя ставить короля под удар. Если короля атакуют — это <b>шах</b>, и от него нужно защититься. Сейчас белому королю шах — уйди с линии атаки.', fen:'4r2k/8/8/8/8/8/8/4K3 w - - 0 1', goal:{type:'any'} },
+  ]},
+  { id:'castle', ico:'🏰', title:'Рокировка', sub:'Спрятать короля', steps:[
+    { text:'Рокировка — особый ход: король сдвигается на 2 клетки к ладье, а ладья перепрыгивает через него. Можно, если король и ладья ещё не ходили, между ними пусто и король не под шахом. Нажми на короля, затем на g1 или c1.', fen:'r3k2r/pppppppp/8/8/8/8/PPPPPPPP/R3K2R w KQkq - 0 1', goal:{type:'castle'} },
+  ]},
+  { id:'mate', ico:'🏁', title:'Мат', sub:'Как закончить партию', steps:[
+    { text:'<b>Мат</b> — это шах, от которого нет защиты. Классический «мат по последней горизонтали»: король заперт своими пешками. Поставь мат ладьёй.', fen:'6k1/5ppp/8/8/8/8/8/R5K1 w - - 0 1', goal:{type:'mate'} },
+    { text:'Ферзь и король вместе легко ставят мат. Твой король уже отрезал чёрному королю пути отхода — поставь мат ферзём.', fen:'k7/8/1K6/8/8/8/8/6Q1 w - - 0 1', goal:{type:'mate'} },
+    { text:'Мат двумя ладьями «лесенкой»: одна ладья держит 7-ю горизонталь, другая даёт мат.', fen:'k7/7R/8/8/8/8/8/6RK w - - 0 1', goal:{type:'mate'} },
+  ]},
+  { id:'fork', ico:'🍴', title:'Тактика: вилка', sub:'Две цели одним ходом', steps:[
+    { text:'<b>Вилка</b> — ход, которым фигура нападает сразу на две цели. Конь особенно хорош в этом. Найди ход конём, который атакует и короля, и ладью.', fen:'r3k3/8/8/3N4/8/8/8/4K3 w - - 0 1', goal:{type:'move', from:'d5', to:'c7'} },
+  ]},
+  { id:'opening', ico:'📖', title:'Принципы дебюта', sub:'Как начинать партию', steps:[
+    { text:'Три правила начала партии:<br>1) Займи центр пешками (e4, d4).<br>2) Быстро выведи коней и слонов.<br>3) Сделай рокировку.<br><br>Начни партию ходом пешки в центр: e2–e4 или d2–d4.', fen:'start', goal:{type:'move', to:['e4','d4']} },
+    { text:'Чёрные ответили e5. Теперь выведи коня так, чтобы он атаковал пешку e5.', fen:'rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 2', goal:{type:'move', from:'g1', to:'f3'} },
+    { text:'Чёрные защитили пешку конём c6. Выведи слона на активную позицию c4 — он смотрит на слабую клетку f7.', fen:'r1bqkbnr/pppp1ppp/2n5/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R w KQkq - 2 3', goal:{type:'move', from:'f1', to:'c4'} },
+  ]},
+];
+
+const PUZZLES = [
+  { fen:'6k1/5ppp/8/8/8/8/8/R5K1 w - - 0 1', n:1, theme:'Мат по последней горизонтали' },
+  { fen:'k7/8/1K6/8/8/8/8/6Q1 w - - 0 1', n:1, theme:'Ферзь и король' },
+  { fen:'r5k1/8/8/8/8/8/5PPP/6K1 b - - 0 1', n:1, theme:'Мат по последней горизонтали' },
+  { fen:'6rk/6pp/8/6N1/8/8/8/6K1 w - - 0 1', n:1, theme:'Спёртый мат' },
+  { fen:'rnbqkbnr/pppp1ppp/8/4p3/6P1/5P2/PPPPP2P/RNBQKBNR b KQkq - 0 2', n:1, theme:'Детский мат наоборот' },
+  { fen:'r1bqkb1r/pppp1ppp/2n2n2/4p2Q/2B1P3/8/PPPP1PPP/RNB1K1NR w KQkq - 4 4', n:1, theme:'Детский мат' },
+  { fen:'7k/7p/5N2/8/8/8/8/6RK w - - 0 1', n:1, theme:'Арабский мат' },
+  { fen:'6k1/5p1p/6pB/8/8/8/8/3Q2K1 w - - 0 1', n:1, theme:'Ферзь и слон' },
+  { fen:'6k1/pp3ppp/8/8/8/1q6/5PPP/3R2K1 w - - 0 1', n:1, theme:'Последняя горизонталь' },
+  { fen:'6k1/5ppp/8/8/8/2q5/5PPP/r2R2K1 b - - 0 1', n:1, theme:'Взятие с матом' },
+  { fen:'5k2/8/5K2/8/8/8/8/R7 w - - 0 1', n:1, theme:'Ладья и король' },
+  { fen:'6k1/5ppp/4p3/8/8/8/1B3PPP/3Q2K1 w - - 0 1', n:1, theme:'Ферзь на 8-й' },
+  { fen:'r5k1/5ppp/8/8/8/8/3R1PPP/3R2K1 w - - 0 1', n:2, theme:'Сдвоенные ладьи' },
+  { fen:'r6k/6pp/7N/8/8/1Q6/8/6K1 w - - 0 1', n:2, theme:'Жертва ферзя + спёртый мат' },
+  { fen:'k7/8/2K5/8/8/8/8/7R w - - 0 1', n:2, theme:'Тихий ход королём' },
+  { fen:'6k1/8/5K2/8/8/8/8/7R w - - 0 1', n:2, theme:'Тихий ход ладьёй' },
+  { fen:'8/8/k7/p7/8/1R6/3R4/3K4 w - - 0 1', n:2, theme:'Две ладьи' },
+  { fen:'8/4Q3/k2N4/5K2/8/8/8/8 w - - 0 1', n:2, theme:'Ферзь и конь' },
+  { fen:'3K3k/5Q2/8/8/4p3/8/6B1/8 w - - 0 1', n:2, theme:'Ферзь и слон' },
+  { fen:'6R1/1P2KB2/7k/8/8/8/8/8 w - - 0 1', n:2, theme:'Превращение' },
+  { fen:'1k1N4/3p4/8/p1K2Q2/8/8/8/8 w - - 0 1', n:2, theme:'Ферзь и конь' },
+  { fen:'6K1/8/7Q/8/k7/8/8/2N5 w - - 0 1', n:2, theme:'Тихий ход ферзём' },
+  { fen:'5N2/8/8/8/1R3K2/8/8/7k w - - 0 1', n:2, theme:'Тихий ход королём' },
+  { fen:'8/1K3B2/8/k7/8/7p/8/2Q5 w - - 0 1', n:2, theme:'Ферзь и слон' },
+];
+
+/* ---------- app ---------- */
+const app = document.getElementById('app');
+let tab = 'learn', cleanup = null;
+function setBack(fn){
+  if (!tg || !tg.BackButton) return;
+  tg.BackButton.offClick(setBack._fn || (()=>{}));
+  if (fn) { setBack._fn = fn; tg.BackButton.onClick(fn); tg.BackButton.show(); }
+  else { setBack._fn = null; tg.BackButton.hide(); }
+}
+function show(t){
+  tab = t; setBack(null);
+  document.querySelectorAll('#tabs button').forEach(b => b.classList.toggle('on', b.dataset.tab===t));
+  ({ learn:renderLearn, puzzles:renderPuzzles, play:renderPlay })[t]();
+  window.scrollTo(0,0);
+}
+document.getElementById('tabs').addEventListener('click', e => { const b=e.target.closest('button'); if (b){ haptic.tap(); show(b.dataset.tab); } });
+
+function statsBar(){
+  const d = store.data, done = Object.keys(d.lessons).length, solved = Object.keys(d.solved).length;
+  return `<div class="stats">
+    <div class="stat"><b>${d.rating}</b><span>рейтинг</span></div>
+    <div class="stat"><b>${done}/${LESSONS.length}</b><span>уроков</span></div>
+    <div class="stat"><b>${solved}/${PUZZLES.length}</b><span>задач</span></div>
+  </div>`;
+}
+
+/* Learn */
+function renderLearn(){
+  app.innerHTML = `<h1>Шахматный тренер</h1>${statsBar()}
+  <div class="list">${LESSONS.map((l,i)=>`
+    <div class="item" data-i="${i}"><div class="ico">${l.ico}</div>
+    <div class="t"><b>${i+1}. ${l.title}</b><span class="muted">${l.sub}</span></div>
+    ${store.data.lessons[l.id] ? '<div class="done">✓</div>' : '<div class="muted">›</div>'}</div>`).join('')}</div>`;
+  app.querySelectorAll('.item').forEach(it => it.onclick = () => { haptic.tap(); openLesson(+it.dataset.i, 0); });
+}
+function openLesson(li, si){
+  const L = LESSONS[li], S = L.steps[si];
+  setBack(() => show('learn'));
+  const fen = S.fen==='start' ? undefined : S.fen;
+  const g = fen ? new Chess(fen) : new Chess();
+  app.innerHTML = `<h2>${L.ico} ${L.title}</h2>
+    <div class="muted">Шаг ${si+1} из ${L.steps.length}</div>
+    <div class="progress"><i style="width:${(si)/L.steps.length*100}%"></i></div>
+    <div class="card task">${S.text}</div>
+    <div class="board-wrap"><div class="board" id="bd"></div></div>
+    <div class="feedback" id="fb"></div>
+    <div class="row"><button class="btn sec" id="retry">Заново</button><button class="btn" id="next" ${S.goal.type==='info'?'':'disabled'}>${si+1<L.steps.length?'Дальше':'Завершить'}</button></div>`;
+  const fb = document.getElementById('fb'); let done = S.goal.type==='info';
+  const board = new Board(document.getElementById('bd'), g, {
+    canMove: () => !done,
+    onMove: mv => {
+      const G = S.goal; let ok = false;
+      const tos = [].concat(G.to || []);
+      if (G.type==='move') ok = (!G.to || tos.includes(mv.to)) && (!G.from || G.from===mv.from) && (!G.piece || G.piece===mv.piece);
+      else if (G.type==='mate') ok = g.in_checkmate();
+      else if (G.type==='castle') ok = /[kq]/.test(mv.flags);
+      else if (G.type==='any') ok = true;
+      if (ok) {
+        done = true; haptic.ok();
+        fb.className='feedback ok'; fb.textContent = G.type==='mate' ? 'Мат! Отлично! 🎉' : 'Верно! 👍';
+        document.getElementById('next').disabled = false;
+      } else {
+        haptic.bad(); fb.className='feedback bad'; fb.textContent='Не совсем. Попробуй ещё раз.';
+        setTimeout(()=>{ g.undo(); board.last=null; board.render(); }, 600);
+      }
+    }
+  });
+  if (S.goal.type==='move' && S.goal.to && S.goal.from==null && S.goal.type!=='info') [].concat(S.goal.to).forEach(t => board.marks[t]='target');
+  board.flip = g.turn()==='b';
+  board.render();
+  document.getElementById('retry').onclick = () => openLesson(li, si);
+  document.getElementById('next').onclick = () => {
+    haptic.tap();
+    if (si+1 < L.steps.length) openLesson(li, si+1);
+    else { store.data.lessons[L.id] = 1; store.save(); haptic.ok();
+      if (li+1 < LESSONS.length) openLesson(li+1, 0); else show('learn'); }
+  };
+  window.scrollTo(0,0);
+}
+
+/* Puzzles */
+let pIdx = null;
+function nextUnsolved(from){
+  for (let k=0;k<PUZZLES.length;k++){ const i=(from+k)%PUZZLES.length; if (!store.data.solved[i]) return i; }
+  return (from) % PUZZLES.length;
+}
+function renderPuzzles(){
+  if (pIdx===null) pIdx = nextUnsolved(0);
+  const P = PUZZLES[pIdx], g = new Chess(P.fen), side = g.turn()==='w' ? 'Белые' : 'Чёрные';
+  let left = P.n, failed = false, hinted = false, solved = false;
+  const d = store.data;
+  app.innerHTML = `<div class="stats">
+      <div class="stat"><b id="rt">${d.rating}</b><span>рейтинг</span></div>
+      <div class="stat"><b id="st">${d.streak}</b><span>серия 🔥</span></div>
+      <div class="stat"><b>${d.best}</b><span>рекорд</span></div></div>
+    <div class="card task"><b>Задача ${pIdx+1}.</b> ${side} начинают и ставят мат в ${P.n} ${P.n===1?'ход':'хода'}.<div class="muted">${P.theme}</div></div>
+    <div class="board-wrap"><div class="board" id="bd"></div></div>
+    <div class="feedback" id="fb"></div>
+    <div class="row"><button class="btn sec" id="hint">Подсказка</button><button class="btn sec" id="reset">Заново</button><button class="btn" id="next">Дальше</button></div>
+    <div class="card" style="margin-top:12px"><div class="muted">Все задачи</div><div class="chips">${PUZZLES.map((_,i)=>`<button class="chip ${d.solved[i]?'solved':''} ${i===pIdx?'cur':''}" data-i="${i}">${i+1}</button>`).join('')}</div></div>`;
+  const fb = document.getElementById('fb');
+  const board = new Board(document.getElementById('bd'), g, {
+    canMove: () => !solved && !board.locked,
+    onMove: mv => {
+      board.marks = {};
+      if (g.in_checkmate()) return win();
+      if (left>1 && !g.game_over() && allRepliesLose(g, left-1)) {
+        left--; fb.className='feedback ok'; fb.textContent='Хороший ход! Продолжай…';
+        board.locked = true;
+        setTimeout(() => {
+          const replies = g.moves({ verbose:true });
+          const r = replies[Math.random()*replies.length|0];
+          board.play({ from:r.from, to:r.to, promotion:r.promotion || 'q' });
+          board.locked = false;
+        }, 500);
+        return;
+      }
+      failed = true; haptic.bad(); fb.className='feedback bad'; fb.textContent='Это не мат. Попробуй ещё.';
+      if (d.streak){ d.streak = 0; document.getElementById('st').textContent = 0; }
+      board.locked = true;
+      setTimeout(()=>{ g.undo(); board.last=null; board.locked=false; board.render(); }, 700);
+    }
+  });
+  function win(){
+    solved = true; haptic.ok();
+    fb.className='feedback ok'; fb.textContent='Мат! Задача решена 🎉';
+    if (!d.solved[pIdx]) {
+      const delta = failed ? 4 : hinted ? 6 : 12 + 4*P.n;
+      d.rating += delta; d.solved[pIdx] = 1;
+      fb.textContent += `  +${delta}`;
+    }
+    if (!failed && !hinted) { d.streak++; d.best = Math.max(d.best, d.streak); } else d.streak = 0;
+    store.save();
+    document.getElementById('rt').textContent = d.rating; document.getElementById('st').textContent = d.streak;
+  }
+  board.flip = g.turn()==='b'; board.render();
+  document.getElementById('hint').onclick = () => {
+    if (solved || board.locked) return;
+    const m = mateIn(g, left); if (!m) return;
+    hinted = true; haptic.tap();
+    if (board.marks[m.from]) board.marks[m.to] = 'hint';
+    board.marks[m.from] = 'hint'; board.render();
+    fb.className='feedback'; fb.textContent = board.marks[m.to] ? 'Ход: ' + m.san : 'Посмотри на выделенную фигуру';
+  };
+  document.getElementById('reset').onclick = () => { haptic.tap(); renderPuzzles(); };
+  document.getElementById('next').onclick = () => { haptic.tap(); pIdx = nextUnsolved(pIdx+1); renderPuzzles(); };
+  app.querySelectorAll('.chip').forEach(c => c.onclick = () => { haptic.tap(); pIdx = +c.dataset.i; renderPuzzles(); });
+}
+
+/* Play vs computer */
+const LEVELS = [
+  { name:'Новичок', depth:1, noise:250 },
+  { name:'Любитель', depth:2, noise:60 },
+  { name:'Сильный', depth:3, noise:10 },
+];
+const playState = { level:0, color:'w', game:null, history:[] };
+function renderPlay(){
+  const S = playState;
+  if (!S.game) S.game = new Chess();
+  const g = S.game;
+  app.innerHTML = `<div class="seg" id="lv">${LEVELS.map((l,i)=>`<button data-i="${i}" class="${i===S.level?'on':''}">${l.name}</button>`).join('')}</div>
+    <div class="seg" id="cl"><button data-c="w" class="${S.color==='w'?'on':''}">Играю белыми</button><button data-c="b" class="${S.color==='b'?'on':''}">Играю чёрными</button></div>
+    <div class="board-wrap"><div class="board" id="bd"></div></div>
+    <div class="feedback" id="fb"></div>
+    <div class="row"><button class="btn sec" id="undo">Отменить</button><button class="btn sec" id="hint">Подсказка</button><button class="btn" id="new">Новая</button></div>
+    <div class="moves" id="mv"></div>`;
+  const fb = document.getElementById('fb');
+  const board = new Board(document.getElementById('bd'), g, {
+    canMove: () => g.turn()===S.color && !g.game_over() && !board.locked,
+    onMove: () => { board.marks = {}; status(); if (!g.game_over()) aiMove(); }
+  });
+  function status(){
+    document.getElementById('mv').textContent = g.history().map((m,i)=> i%2===0 ? `${i/2+1}. ${m}` : m).join(' ');
+    fb.className = 'feedback';
+    if (g.in_checkmate()) {
+      const youWin = g.turn()!==S.color;
+      fb.className = 'feedback ' + (youWin?'ok':'bad');
+      fb.textContent = youWin ? 'Мат! Ты победил 🏆' : 'Мат. Компьютер победил.';
+      if (!S.counted) { S.counted = true; store.data.games++; if (youWin) store.data.wins++; store.save(); youWin ? haptic.ok() : haptic.bad(); }
+    } else if (g.game_over()) fb.textContent = 'Ничья';
+    else if (g.turn()!==S.color) fb.textContent = 'Компьютер думает…';
+    else fb.textContent = g.in_check() ? 'Тебе шах!' : 'Твой ход';
+  }
+  function aiMove(){
+    board.locked = true; status();
+    setTimeout(() => {
+      const L = LEVELS[S.level];
+      const m = bestMove(g, L.depth, L.noise);
+      if (m) board.play({ from:m.from, to:m.to, promotion:m.promotion || 'q' });
+      board.locked = false; status();
+    }, 250);
+  }
+  board.flip = S.color==='b'; board.render(); status();
+  if (g.turn()!==S.color && !g.game_over()) aiMove();
+  document.getElementById('lv').onclick = e => { const b=e.target.closest('button'); if(!b) return; S.level=+b.dataset.i; haptic.tap(); app.querySelectorAll('#lv button').forEach(x=>x.classList.toggle('on', x===b)); };
+  document.getElementById('cl').onclick = e => { const b=e.target.closest('button'); if(!b || board.locked) return; S.color=b.dataset.c; S.game=new Chess(); S.counted=false; haptic.tap(); renderPlay(); };
+  document.getElementById('new').onclick = () => { if (board.locked) return; S.game = new Chess(); S.counted=false; haptic.tap(); renderPlay(); };
+  document.getElementById('undo').onclick = () => {
+    if (board.locked) return;
+    g.undo(); if (g.turn()!==S.color) g.undo();
+    S.counted = false; board.last = null; board.sel = null; board.marks = {}; board.render(); status(); haptic.tap();
+  };
+  document.getElementById('hint').onclick = () => {
+    if (board.locked || g.turn()!==S.color || g.game_over()) return;
+    const m = bestMove(g, 2, 0); board.marks = {}; board.marks[m.from]='hint'; board.marks[m.to]='hint'; board.render();
+    fb.textContent = 'Совет: ' + m.san; haptic.tap();
+  };
+}
+
+store.load(() => show('learn'));
+</script>
+</body>
+</html>
