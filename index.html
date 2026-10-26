@@ -116,8 +116,8 @@ const store = {
 };
 
 /* ---------- board component ---------- */
-// Фигуры Chessnut — Alexis Luengas, Apache 2.0 (pieces/chessnut/LICENSE)
-const pieceSrc = p => `pieces/chessnut/${p.color}${p.type.toUpperCase()}.svg`;
+// Фигуры cburnett — Colin M.L. Burnett, GPLv2+ (pieces/cburnett/LICENSE)
+const pieceSrc = p => `pieces/cburnett/${p.color}${p.type.toUpperCase()}.svg`;
 ['w','b'].forEach(color => 'kqrbnp'.split('').forEach(type => { new Image().src = pieceSrc({ color, type }); }));
 const FILES = 'abcdefgh';
 function Board(el, game, opts){
